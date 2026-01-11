@@ -1,6 +1,7 @@
 #!/bin/env python3
 import sympy
 import random
+import time
 # import ollama
 from io import BytesIO
 from PIL import Image, ImageTk
@@ -42,9 +43,13 @@ problem2 = [
 
 ]
 
+problem3 = [
+    lambda x: f"  \\item $ \\displaystyle {sympy.latex(x)}$ を微分せよ \n"
+]
+
 answers = [
-    lambda: problem1.diff().simplify(),
-    lambda: problem1.integrate().simplify(),
+    lambda x: x.diff().simplify(),
+    lambda x: x.integrate().simplify(),
     # lambda: problem1.det()
 ]
 
@@ -52,6 +57,10 @@ answers2 = [
     lambda: f"${sympy.latex(answer1)}$",
     lambda: f"${sympy.latex(answer1)}$",
     # lambda: f"${sympy.latex(answer1)}$"
+]
+
+answers3 = [
+    lambda x: f"  \\item $ \\displaystyle {sympy.latex(x)}$\n"
 ]
 
 def generate_aaa(depth):
@@ -80,11 +89,12 @@ def generate_aaa(depth):
 def generate_bbb(i, j):
     return sympy.Matrix([[generate_aaa(difficulty) for b in range(i)] for a in range(j)])
 
-
 def aaaa(event):
     global problem1
     global answer1
     global i
+    global start_time
+
     if event.keysym == "space":
         ax.clear()
         ax.axis('off')
@@ -92,22 +102,74 @@ def aaaa(event):
             while True:
                 try:
                     problem1 = problems[mode]()
-                    answer1 = answers[mode]()
+                    answer1 = answers[mode](problem1)
                     ax.text(0.5, 0.5, problem2[mode](), fontsize=20, ha='center', va='center')
                     label.config(text=f"Problem{i/2}")
+                    start_time = time.time()
                     break
                 except Exception as e:
                     print("えらー1: ", e)
         else:
             ax.text(0.5, 0.5, answers2[mode](), fontsize=20, ha='center', va='center')
             label.config(text=f"Answer{(i-1)/2}")
+            print(time.time()-start_time)
         canvas.draw()
         i += 1
 
-@click.command()
+@click.group()
+def mathmath():
+    pass
+
+@mathmath.command()
 @click.argument("mode1", type=int)
 @click.argument("difficulty1", type=int)
-def main(mode1, difficulty1):
+@click.argument("num_prob", type=int)
+def genlatex(mode1=0, difficulty1=2, num_prob=50):
+    global mode
+    global difficulty
+
+    mode = mode1
+    difficulty = difficulty1
+
+    latex_content = r"""
+    \documentclass{jlreq}
+    \usepackage[utf8]{inputenc}
+    \usepackage{amsmath, amssymb}
+    \title{数学問題集D""" + str(difficulty) + "M" + str(mode) + r"""}
+    \author{Automatic Math Problem Generating System by Fujita}
+    \begin{document}
+    \maketitle
+    \section{問題}
+    \begin{enumerate}
+    """
+    answs = ""
+
+    for j in range(num_prob):
+        while True:
+            try:
+                prob = problems[mode]()
+                answs += answers3[mode](answers[mode](prob))
+                latex_content += problem3[mode](prob)
+                break
+            except Exception as e:
+                print("えらー", e)
+    latex_content += r"""
+    \end{enumerate}
+    """
+
+    latex_content += r"""
+    \section{解答}
+    \begin{enumerate}
+    """ + answs + r"""
+    \end{enumerate}
+    \end{document}
+    """
+    print(latex_content)
+
+@mathmath.command()
+@click.argument("mode1", type=int)
+@click.argument("difficulty1", type=int)
+def interactive(mode1=0, difficulty1=2):
     global mode
     global difficulty
 
@@ -116,6 +178,9 @@ def main(mode1, difficulty1):
 
     root.bind("<Key>", aaaa)
     root.mainloop()
+
+def main():
+    mathmath()
 
 if __name__ == "__main__":
     main()
