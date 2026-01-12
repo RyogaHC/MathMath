@@ -11,7 +11,17 @@ from matplotlib.figure import Figure
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 # import asyncio
 import click
+
+# 独立変数
 x = sympy.Symbol('x')
+
+# 定数
+a = sympy.Symbol('a')
+b = sympy.Symbol('b')
+
+# 積分定数
+C = sympy.Symbol('C')
+
 i = 0
 mode = 0
 difficulty = 2
@@ -30,43 +40,72 @@ ax.axis('off')
 canvas = FigureCanvasTkAgg(fig, master=root)
 canvas.get_tk_widget().pack(fill=tk.BOTH, expand=1)
 
+# client = ollama.Client()
+
+# model = "qwen3-vl:2b-instruct"
+
+problem_kekka = []
+
+sekibun_kekka = [None] * 2
+bibun_kekka = [None] * 2
+
+def sekibun():
+    global sekibun_kekka
+    sekibun_kekka[1] = genexp3(difficulty)
+    sekibun_kekka[0] = sekibun_kekka[1].diff(x)
+    return sekibun_kekka[0]
+
+def bibun():
+    global bibun_kekka
+    bibun_kekka[0] = genexp2(difficulty)
+    bibun_kekka[1] = bibun_kekka[0].diff(x)
+    return bibun_kekka[0]
+
+# 問題生成
 problems = [
-    lambda: generate_aaa(difficulty),
-    lambda: generate_aaa(difficulty),
+    bibun,
+    sekibun
     # lambda: generate_bbb(3, 3)
 ]
 
+
 problem2 = [
-    lambda: f"$\\left({sympy.latex(problem1)}\\right)'$",
-    lambda: f"$\\int \\left({sympy.latex(problem1)}\\right)dx$",
+    lambda: f"$\\left({sympy.latex(problem1, fold_func_brackets=True)}\\right)'$",
+    lambda: f"$\\int \\left({sympy.latex(problem1, fold_func_brackets=True)}\\right)dx$",
     # lambda: r"$" + f"{sympy.latex(problem1)}" + r"\text{の行列式}$",
 
 ]
 
+# 最終的なLaTeXで出力される問題の部分
 problem3 = [
-    lambda x: f"  \\item $ \\displaystyle {sympy.latex(x)}$ を微分せよ \n"
+    lambda x: f"  \\item $ \\displaystyle y = {sympy.latex(x, fold_func_brackets=True)}$ を微分せよ。 \n",
+    lambda x: f"  \\item $ \\displaystyle y = {sympy.latex(x, fold_func_brackets=True)}$ を積分せよ。 \n"
 ]
 
+# 問題を入れると、答えがでてくる
 answers = [
-    lambda x: x.diff().simplify(),
-    lambda x: x.integrate().simplify(),
-    # lambda: problem1.det()
+    lambda: bibun_kekka[1].together().trigsimp().simplify().cancel(),
+    lambda: sekibun_kekka[1].together().cancel().trigsimp().simplify(),
 ]
 
 answers2 = [
-    lambda: f"${sympy.latex(answer1)}$",
-    lambda: f"${sympy.latex(answer1)}$",
+    lambda: f"${sympy.latex(answer1, fold_func_brackets=True)}$",
+    lambda: f"${sympy.latex(answer1, fold_func_brackets=True)}$",
     # lambda: f"${sympy.latex(answer1)}$"
 ]
 
+# 最終的なLaTeXで出力される答えの部分
 answers3 = [
-    lambda x: f"  \\item $ \\displaystyle {sympy.latex(x)}$\n"
+    lambda x: f"  \\item $ \\displaystyle {sympy.latex(x, fold_func_brackets=True)}$\n",
+    lambda x: f"  \\item $ \\displaystyle {sympy.latex(x, fold_func_brackets=True)}$\n"
 ]
 
-def generate_aaa(depth):
+def genexp(depth):
     if depth > 0:
         parts = [
             x ** random.randint(1, 3),
+            a ** random.randint(1, 3),
+            b ** random.randint(1, 3),
             sympy.S(random.randint(-9, 9)),
             sympy.sqrt(x),
             sympy.sin(x),
@@ -74,20 +113,36 @@ def generate_aaa(depth):
             sympy.tan(x),
             sympy.exp(x),
             sympy.log(x),
-            generate_aaa(depth-1)
+            genexp(depth-1)
         ]
         comb = [
-            lambda: generate_aaa(depth-1) * random.choice(parts),
-            lambda: generate_aaa(depth-1) + random.choice(parts),
-            lambda: generate_aaa(depth-1).subs(x, random.choice(parts)),
-            lambda: generate_aaa(depth-1)/random.choice(parts)
+            lambda: genexp(depth-1) * random.choice(parts),
+            lambda: genexp(depth-1) + random.choice(parts),
+            lambda: genexp(depth-1).subs(x, random.choice(parts)),
+            lambda: genexp(depth-1)/random.choice(parts)
         ]
         return random.choice(comb)()
     else:
         return sympy.S(1)
 
+def genexp2(depth):
+    expression = genexp(depth)
+    while expression.has(sympy.oo, sympy.zoo, sympy.nan) or x not in expression.free_symbols or expression in problem_kekka:
+        expression = genexp(depth)
+    return expression
+
+def genexp3(depth):
+    expression = genexp(depth)
+    constant, dependent = expression.as_independent(x, as_Add=True)
+    expression = dependent + C
+    while expression.has(sympy.oo, sympy.zoo, sympy.nan) or x not in expression.free_symbols or expression in problem_kekka:
+        expression = genexp(depth)
+        constant, dependent = expression.as_independent(x, as_Add=True)
+        expression = dependent + C
+    return expression
+        
 def generate_bbb(i, j):
-    return sympy.Matrix([[generate_aaa(difficulty) for b in range(i)] for a in range(j)])
+    return sympy.Matrix([[genexp(difficulty) for b in range(i)] for a in range(j)])
 
 def aaaa(event):
     global problem1
@@ -102,19 +157,23 @@ def aaaa(event):
             while True:
                 try:
                     problem1 = problems[mode]()
-                    answer1 = answers[mode](problem1)
+                    answer1 = answers[mode]()
+
                     ax.text(0.5, 0.5, problem2[mode](), fontsize=20, ha='center', va='center')
                     label.config(text=f"Problem{i/2}")
                     start_time = time.time()
                     break
                 except Exception as e:
-                    print("えらー1: ", e)
+                    pass
         else:
             ax.text(0.5, 0.5, answers2[mode](), fontsize=20, ha='center', va='center')
             label.config(text=f"Answer{(i-1)/2}")
             print(time.time()-start_time)
         canvas.draw()
         i += 1
+
+# def generateKaisetu(prob, answ):
+#     return "\\begin{itembox}{解説}\n" + client.generate("qwen3-vl:4b-instruct", f"以下の問題とその解答のについて参考書風の解説を書け。ただし、数式を書く際にはLaTeXを用いること。\n\n# 問題\n{prob}\n\n# 解答\n{answ}") + "\n\\end{itembox}"
 
 @click.group()
 def mathmath():
@@ -135,6 +194,7 @@ def genlatex(mode1=0, difficulty1=2, num_prob=50):
     \documentclass{jlreq}
     \usepackage[utf8]{inputenc}
     \usepackage{amsmath, amssymb}
+    \usepackage{ascmac}
     \title{数学問題集D""" + str(difficulty) + "M" + str(mode) + r"""}
     \author{Automatic Math Problem Generating System by Fujita}
     \begin{document}
@@ -148,11 +208,22 @@ def genlatex(mode1=0, difficulty1=2, num_prob=50):
         while True:
             try:
                 prob = problems[mode]()
-                answs += answers3[mode](answers[mode](prob))
-                latex_content += problem3[mode](prob)
+                prob2 = problem3[mode](prob)
+
+                problem_kekka.append(prob)
+
+                ans = answers[mode]()
+                ans2 = answers3[mode](ans)
+
+                # ans2 += generateKaisetu(prob2, ans2)
+
+                answs += ans2
+                latex_content += prob2
+
                 break
             except Exception as e:
-                print("えらー", e)
+                pass
+                # print(e)
     latex_content += r"""
     \end{enumerate}
     """
@@ -184,11 +255,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
-# async def chat():
-#     client = ollama.AsyncClient()
-#     async for part in await client.generate("qwen3-vl:4b-instruct", "この計算を使う文章問題を作成してください。\n\n$y=" + sympy.latex(test2) + "$を微分すると\n$y'=" + sympy.latex(sympy.diff(test2, x)) + "$", stream=True):
-#         print(part['response'], end='', flush=True)
-
-# asyncio.run(chat())
-
